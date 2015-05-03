@@ -25,19 +25,22 @@ private:
     unsigned maxLen1, maxLen2;
     // data from file1 and file2
     vector<string> str1, str2;
+    vector<vector<string>> words1, words2;
     // invertedListED[length][pos][str] -> vector of id
     vector<vector<unordered_map<string, vector<int>>>> invertedListED;
     // str -> vector of pair<id, pos>
     unordered_map<string, vector<pair<unsigned, unsigned>>> invertedListJac;
     vector<unsigned> smallstr;
-    vector<JaccardJoinResult> rawResultJac;
+    vector<pair<unsigned, unsigned>> rawResultJac;
     vector<pair<unsigned, unsigned>> rawResultED;
     unsigned q;
     void insertED(unsigned id, unsigned length, unsigned pos, string &str);
     void readData(const char *filename1, const char *filename2);
+    void readDataJac(const char *filename1, const char *filename2);
+    void splitWords(string & str, vector<string>& words);
     void buildJac(double tau);
-    void filterJac(double threshold);
-    double calDistJac(string &a, string &b, int T);
+    void filterJac(double tau);
+    double calDistJac(int id1, int id2);
     void buildED(unsigned threshold);
     void filterED(unsigned tau);
     unsigned calDistED(string &a, string &b, unsigned threshold,

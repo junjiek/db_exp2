@@ -20,96 +20,131 @@ SimJoiner::SimJoiner() {
 
 SimJoiner::~SimJoiner() {}
 
+
+void SimJoiner::splitWords(string & str, vector<string>& words) {
+    int nend = 0; 
+    int nbegin = 0;
+    unordered_set<string> exist;
+    string sub;
+    while (nend != -1) {
+        nend = str.find_first_of(' ', nbegin);
+        if (nend == -1) {
+            sub = str.substr(nbegin, str.length() - nbegin);
+        } else {
+            sub = str.substr(nbegin, nend - nbegin);
+        }
+        if (exist.find(sub) == exist.end()) {
+            exist.insert(sub);
+            words.push_back(sub);
+        }
+        nbegin = nend + 1;
+    }
+}
+
 void SimJoiner::buildJac(double threshold) {
     smallstr.clear();
     invertedListJac.clear();
-    for (int i = 0; i < (int)str1.size(); i++) {
-        int length = str1[i].length();
+    for (int id1 = 0; id1 < (int)words1.size(); id1++) {
+        int length = (int)words1[id1].size();
         int prefix = floor((1 - threshold) * length + 1);
-        if (length < prefix + (int)q - 1) {
-            smallstr.push_back(i);
+        if (length <= prefix) {
+            smallstr.push_back(id1);
             continue;
         }
         for(int j = 0; j < prefix; ++ j) {
-            string sub = str1[i].substr(j, q);
+            string& sub = words1[id1][j];
             if(invertedListJac.find(sub) == invertedListJac.end()) {
                 vector<pair<unsigned, unsigned>> v;
-                v.push_back(make_pair(i, j));
+                v.push_back(make_pair(id1, j));
                 invertedListJac[sub] = v;
-            }
-            else {
-                invertedListJac[sub].push_back(make_pair(i, j));
+            } else {
+                invertedListJac[sub].push_back(make_pair(id1, j));
             }
         }
     }
 }
 
 
-void SimJoiner::filterJac(double threshold) {
-    for (int id2 = 0; id2 < (int)str2.size(); id2++) {
-        int length = str2[id2].length();
-        int prefix = length - floor(threshold * length) + 1;
-        if(length < prefix + (int)q - 1) {
-            for(int j = 0; j < (int)str1.size(); ++ j)
-                rawResultJac.push_back(JaccardJoinResult(j, id2, 0));
+void SimJoiner::filterJac(double tau) {
+    rawResultJac.clear();
+    for (int id2 = 0; id2 < (int)words2.size(); id2++) {
+        int length = (int)words2[id2].size();
+        int prefix = floor((1 - tau) * length + 1);
+        if(length <= prefix) {
+            for(int j = 0; j < (int)words1.size(); ++ j)
+                rawResultJac.push_back(make_pair(j, id2));
             continue;
         }
         unordered_map<int, int> m;
         for(int j = 0; j < prefix; ++ j) {
-            string sub = str2[id2].substr(j, q);
+            string& sub = words2[id2][j];
             for(auto & p : invertedListJac[sub]) {
-                int length2 = str1[p.first].length();
-                if(length2 >= threshold * length) {
-                    int alpha = floor(threshold * (length + length2) / (1 + threshold));
+                int length2 = words1[p.first].size();
+                if(length2 >= tau * length) {
+                    int threshold = floor(tau * (length + length2) / (1 + tau));
                     int ubound = min(length - j, length2 - int(p.second));
-                    if(m[p.first] + ubound >= alpha)
+                    if (m[p.first] + ubound >= threshold)
                         m[p.first] += 1;
                 }
             }
         }
         for (auto & p : m) {
             if(p.second > 0)
-                rawResultJac.push_back(JaccardJoinResult(p.first, id2, p.second));
+                rawResultJac.push_back(make_pair(p.first, id2));
         }
         for (auto& ss : smallstr) {
-            rawResultJac.push_back(JaccardJoinResult(ss, id2, 0));
+            rawResultJac.push_back(make_pair(ss, id2));
         }
     }
 }
 
-double SimJoiner::calDistJac(string &a, string &b, int T) {
-    double dis = 0;
-    unsigned len_a = a.length(), len_b = b.length();
-    if(len_a < q || len_b < q)
-        return dis;
-    unordered_map<string, int> m1, m2;
-    for(unsigned i = 0; i <= len_a - q; ++ i) {
-        string sub = a.substr(i, q);
-        m1[sub] += 1;
+double SimJoiner::calDistJac(int id1, int id2) {
+    int intersec = 0;
+    unordered_set<string> set1;
+    for (auto & w : words1[id1])
+        set1.insert(w);
+    for (auto & w : words2[id2]) {
+        if (set1.find(w) != set1.end())
+            intersec ++;
     }
-    for(unsigned i = 0; i <= len_b - q; ++ i) {
-        string sub = b.substr(i, q);
-        m2[sub] += 1;
-    }
-    T = 0;
-    for(auto & p : m1)
-        T += min(p.second, m2[p.first]);
-    dis = (double)T / (len_a + len_b - 2 * (q - 1) - T);
-    return dis;
+    return (double)intersec / (words1[id1].size() + words2[id2].size() - intersec);
 }
+
+
+void SimJoiner::readDataJac(const char *filename1, const char *filename2) {
+    ifstream fin1(filename1);
+    string line;
+    words1.clear();
+    words2.clear();
+    while(getline(fin1, line)) {
+        vector<string> wordList;
+        splitWords(line, wordList);
+        words1.push_back(wordList);
+    }
+    fin1.close();
+
+    ifstream fin2(filename2);
+    while(getline(fin2, line)) {
+        vector<string> wordList;
+        splitWords(line, wordList);
+        words2.push_back(wordList);
+    }
+    fin2.close();
+}
+
 
 int SimJoiner::joinJaccard(const char *filename1, const char *filename2,
                            double threshold, vector<JaccardJoinResult> &result) {
     result.clear();
-    readData(filename2, filename1);
+    readDataJac(filename2, filename1);
     buildJac(threshold);
     filterJac(threshold);
 
     // verify
     for(auto & i : rawResultJac) {
-        double jac = calDistJac(str1[i.id1], str2[i.id2], i.s);
+        double jac = calDistJac(i.first, i.second);
         if(jac >= threshold)
-            result.push_back(JaccardJoinResult(i.id1, i.id2, jac));
+            result.push_back(JaccardJoinResult(i.first, i.second, jac));
     }
     sort(result.begin(), result.end(), JaccardJoinResultCompare);
 
@@ -133,6 +168,7 @@ void SimJoiner::insertED(unsigned id, unsigned length, unsigned pos, string &str
 
 void SimJoiner::buildED(unsigned tau) {
     smallstr.clear();
+    invertedListED.clear();
     for(int i = 0; i < (int)str1.size(); ++ i) {
         unsigned length = str1[i].length();
         if(length < tau + 1) {
@@ -162,6 +198,7 @@ inline int min3(int x, int y, int z) {
 }
 
 void SimJoiner::filterED(unsigned tau) {
+    rawResultED.clear();
     for(int id2 = 0; id2 < (int)str2.size(); ++ id2) {
         unsigned length = str2[id2].length();
         unordered_set<int> set;
@@ -259,6 +296,8 @@ void SimJoiner::readData(const char *filename1, const char *filename2) {
     ifstream fin1(filename1);
     string line;
     maxLen1 = 0;
+    str1.clear();
+    str2.clear();
     while(getline(fin1, line)) {
         str1.push_back(line);
         if(line.length() > maxLen1)
