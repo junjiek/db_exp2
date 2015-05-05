@@ -22,6 +22,7 @@ const int FAILURE = 1;
 
 class SimJoiner {
 private:
+    clock_t start, finish;
     unsigned maxLen1, maxLen2;
     // data from file1 and file2
     vector<string> str1, str2;
@@ -30,6 +31,7 @@ private:
     vector<vector<unordered_map<string, vector<int>>>> invertedListED;
     // str -> vector of pair<id, pos>
     unordered_map<string, vector<pair<unsigned, unsigned>>> invertedListJac;
+    unordered_map<string, int> wordListJac;
     vector<unsigned> smallstr;
     vector<pair<unsigned, unsigned>> rawResultJac;
     vector<pair<unsigned, unsigned>> rawResultED;
@@ -37,7 +39,7 @@ private:
     void insertED(unsigned id, unsigned length, unsigned pos, string &str);
     void readData(const char *filename1, const char *filename2);
     void readDataJac(const char *filename1, const char *filename2);
-    void splitWords(string & str, vector<string>& words);
+    void splitWords(string & str, vector<string>& words, bool buildWordList);
     void buildJac(double tau);
     void filterJac(double tau);
     double calDistJac(int id1, int id2);
@@ -45,6 +47,9 @@ private:
     void filterED(unsigned tau);
     unsigned calDistED(string &a, string &b, unsigned threshold,
                        vector<int> &d0, vector<int> &d1);
+    int partition(vector<string> & words, int lo, int hi);
+    void qsort(vector<string> & words, int lo, int hi);
+    int calIntersec(int id1, int len1, int id2, int len2);
 public:
     SimJoiner();
     ~SimJoiner();

@@ -15,13 +15,13 @@ bool JaccardJoinResultCompare(const JaccardJoinResult &a, const JaccardJoinResul
 }
 
 SimJoiner::SimJoiner() {
-    q = 4;
+    q = 10;
 }
 
 SimJoiner::~SimJoiner() {}
 
 
-void SimJoiner::splitWords(string & str, vector<string>& words) {
+void SimJoiner::splitWords(string & str, vector<string>& words, bool buildWordList) {
     int nend = 0; 
     int nbegin = 0;
     unordered_set<string> exist;
@@ -36,6 +36,8 @@ void SimJoiner::splitWords(string & str, vector<string>& words) {
         if (exist.find(sub) == exist.end()) {
             exist.insert(sub);
             words.push_back(sub);
+            if (buildWordList)
+                wordListJac[sub] ++;
         }
         nbegin = nend + 1;
     }
@@ -51,8 +53,10 @@ void SimJoiner::buildJac(double threshold) {
             smallstr.push_back(id1);
             continue;
         }
+        // cout << id1 << " " << prefix << ": ";
         for(int j = 0; j < prefix; ++ j) {
             string& sub = words1[id1][j];
+            // cout << sub << " ";
             if(invertedListJac.find(sub) == invertedListJac.end()) {
                 vector<pair<unsigned, unsigned>> v;
                 v.push_back(make_pair(id1, j));
@@ -61,16 +65,45 @@ void SimJoiner::buildJac(double threshold) {
                 invertedListJac[sub].push_back(make_pair(id1, j));
             }
         }
+        // cout << "| ";
+        // for (int j = prefix; j < length; j++)
+        //     cout << words1[id1][j] << " ";
+        // cout << endl;
     }
+    // for (auto & list : invertedListJac) {
+    //     cout << list.first << ": ";
+    //     for (auto & p : list.second) {
+    //         cout << "(" <<  p.first << ", " << p.second << ") ";
+    //     }
+    //     cout << endl;
+    // }
 }
 
+int SimJoiner::calIntersec(int id1, int len1, int id2, int len2) {
+    int i = 0, j = 0;
+    int intersec = 0;
+    while (i < len1 && j < len2) {
+        if (words1[id1][i] == words2[id2][j]) {
+            intersec ++;
+            i ++;
+            j ++;
+        } else if (wordListJac[words1[id1][i]] > wordListJac[words2[id2][j]] || 
+                   (wordListJac[words1[id1][i]] == wordListJac[words2[id2][j]] && 
+                    words1[id1][i] > words2[id2][j])) {
+            j ++;
+        } else {
+            i ++;
+        }
+    }
+    return intersec;
+}
 
 void SimJoiner::filterJac(double tau) {
     rawResultJac.clear();
     for (int id2 = 0; id2 < (int)words2.size(); id2++) {
         int length = (int)words2[id2].size();
         int prefix = floor((1 - tau) * length + 1);
-        if(length <= prefix) {
+        if (length <= prefix) {
             for(int j = 0; j < (int)words1.size(); ++ j)
                 rawResultJac.push_back(make_pair(j, id2));
             continue;
@@ -80,11 +113,12 @@ void SimJoiner::filterJac(double tau) {
             string& sub = words2[id2][j];
             for(auto & p : invertedListJac[sub]) {
                 int length2 = words1[p.first].size();
-                if(length2 >= tau * length) {
-                    int threshold = floor(tau * (length + length2) / (1 + tau));
+                if (length2 >= tau * length) {
+                    int threshold = ceil(tau * (length + length2) / (1 + tau));
                     int ubound = min(length - j, length2 - int(p.second));
                     if (m[p.first] + ubound >= threshold)
                         m[p.first] += 1;
+
                 }
             }
         }
@@ -92,6 +126,26 @@ void SimJoiner::filterJac(double tau) {
             if(p.second > 0)
                 rawResultJac.push_back(make_pair(p.first, id2));
         }
+        // unordered_set<int> candidates;
+        // for(int j = 0; j < prefix; ++ j) {
+        //     string& sub = words2[id2][j];
+        //     for(auto & id1 : invertedListJac[sub]) {
+        //         if (candidates.find(id1.first) != candidates.end())
+        //             continue;
+        //         else
+        //             candidates.insert(id1.first);
+        //         int length1 = words1[id1.first].size();
+        //         if (length1 >= tau * length) {
+                    
+        //             int prefix1 = floor((1 - tau) * length1 + 1);
+        //             int prefixIntersec = calIntersec(id1.first, prefix1, id2, prefix);
+        //             int ubound = prefixIntersec + min(length - prefix, length1 - prefix1);
+        //             int threshold = ceil(tau * (length + length1) / (1 + tau));
+        //             if (ubound >= threshold)
+        //                 rawResultJac.push_back(make_pair(id1.first, id2));
+        //         }
+        //     }
+        // }
         for (auto& ss : smallstr) {
             rawResultJac.push_back(make_pair(ss, id2));
         }
@@ -99,14 +153,7 @@ void SimJoiner::filterJac(double tau) {
 }
 
 double SimJoiner::calDistJac(int id1, int id2) {
-    int intersec = 0;
-    unordered_set<string> set1;
-    for (auto & w : words1[id1])
-        set1.insert(w);
-    for (auto & w : words2[id2]) {
-        if (set1.find(w) != set1.end())
-            intersec ++;
-    }
+    int intersec = calIntersec(id1, words1[id1].size(), id2, words2[id2].size());
     return (double)intersec / (words1[id1].size() + words2[id2].size() - intersec);
 }
 
@@ -118,7 +165,8 @@ void SimJoiner::readDataJac(const char *filename1, const char *filename2) {
     words2.clear();
     while(getline(fin1, line)) {
         vector<string> wordList;
-        splitWords(line, wordList);
+        // cout << line << endl;
+        splitWords(line, wordList, true);
         words1.push_back(wordList);
     }
     fin1.close();
@@ -126,26 +174,73 @@ void SimJoiner::readDataJac(const char *filename1, const char *filename2) {
     ifstream fin2(filename2);
     while(getline(fin2, line)) {
         vector<string> wordList;
-        splitWords(line, wordList);
+        splitWords(line, wordList, false);
         words2.push_back(wordList);
     }
     fin2.close();
 }
 
 
+void SimJoiner::qsort(vector<string> & words, int lo, int hi) {
+    if (hi - lo < 2) return;
+    int mi = partition(words, lo, hi - 1);
+    qsort(words, lo, mi);
+    qsort(words, mi + 1, hi);
+}
+
+int SimJoiner::partition(vector<string> & words, int lo, int hi) {
+    swap(words[lo], words[lo + rand() % (hi - lo + 1)]);
+    string& pivot = words[lo];
+    int mi = lo;
+    for (int k = lo + 1; k <= hi; k ++) {
+        if (wordListJac[words[k]] < wordListJac[pivot] || 
+            (wordListJac[words[k]] == wordListJac[pivot] && words[k] < pivot) ) {
+            swap(words[++mi], words[k]);
+        }
+    }
+    swap(words[lo], words[mi]);
+    return mi;
+}
+
 int SimJoiner::joinJaccard(const char *filename1, const char *filename2,
                            double threshold, vector<JaccardJoinResult> &result) {
     result.clear();
+    start = clock();
     readDataJac(filename2, filename1);
-    buildJac(threshold);
-    filterJac(threshold);
+    finish = clock();
+    printf("readDataJac: %lfs \n", (double)(finish - start) / CLOCKS_PER_SEC);
 
+    start = clock();    
+    for (auto & v : words1) {
+        qsort(v, 0, v.size());
+    }
+    for (auto & v : words2) {
+        qsort(v, 0, v.size());
+    }
+    finish = clock();
+    printf("sort: %lfs \n", (double)(finish - start) / CLOCKS_PER_SEC);
+    
+    start = clock();
+    buildJac(threshold);
+    finish = clock();
+    printf("buildJac: %lfs \n", (double)(finish - start) / CLOCKS_PER_SEC);
+
+    start = clock();
+    filterJac(threshold);
+    finish = clock();
+    printf("filterJac: %lfs \n", (double)(finish - start) / CLOCKS_PER_SEC);
+    
     // verify
+    start = clock();
+    cout << rawResultJac.size() << endl;
     for(auto & i : rawResultJac) {
         double jac = calDistJac(i.first, i.second);
         if(jac >= threshold)
             result.push_back(JaccardJoinResult(i.first, i.second, jac));
     }
+    finish = clock();
+    printf("verify: %lfs \n", (double)(finish - start) / CLOCKS_PER_SEC);
+    
     sort(result.begin(), result.end(), JaccardJoinResultCompare);
 
     return SUCCESS;
