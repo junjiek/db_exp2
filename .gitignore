@@ -4,3 +4,6 @@ exp2/*
 joinED/*
 src1/*
 *.zip
+*.o
+*.h
+simjoiner
